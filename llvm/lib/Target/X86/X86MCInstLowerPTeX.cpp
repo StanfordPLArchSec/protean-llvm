@@ -58,6 +58,12 @@ static void annotate(const MachineInstr *MI, MCInst& OutMI) {
 void X86MCInstLowerTPE(const MachineInstr *MI, MCInst& OutMI) {
   annotate(MI, OutMI);
 
+  if (MI->getOpcode() == X86::POP64r && getPTeXMode() == X86::NCT)
+    for (const MachineOperand &MO : MI->operands())
+      if (MO.isReg() && MO.isDef() && !MO.isImplicit() && !MO.isUndef())
+        assert(!MO.isPublic());
+    
+
   if (!shouldConsiderInstructionForPrefix(*MI))
     return;
 

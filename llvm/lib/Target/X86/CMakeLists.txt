@@ -100,7 +100,8 @@ set(sources
   PTeX/PTeXAnalysis.cpp
   PTeX/PublicPhysRegs.cpp
   PTeX/ForwardAnalysis.cpp
-  PTeX/BackwardAnalysis.cpp
+  PTeX/BackwardAnalysis_CT.cpp
+  PTeX/BackwardAnalysis_CTS.cpp
   PTeX/BranchAnalysis.cpp
   PTeX/Util.cpp
   PTeX/PTeXInfo.cpp

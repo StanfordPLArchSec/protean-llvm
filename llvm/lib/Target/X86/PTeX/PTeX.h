@@ -15,9 +15,11 @@ extern cl::opt<bool> UnprotectAllPointers;
 extern cl::opt<bool> SplitCriticalEdges;
 
 enum PTeXMode {
-  wSNI,
-  SCT,
-  sSNI,
+  SBOX,
+  CT,
+  CTS,
+  NCT,
+  sSNI = CT,
 };
 
 PTeXMode getPTeXMode();

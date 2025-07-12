@@ -4,12 +4,13 @@
 
 namespace llvm::X86 {
 
-class BackwardAnalysis : public PTeXInfo {
+// TODO: Rename to BackwardAnalysis_CT.
+class BackwardAnalysis_CT : public PTeXInfo {
 private:
   PTeXInfo &Parent;
 
 public:
-  BackwardAnalysis(PTeXInfo &Parent):
+  BackwardAnalysis_CT(PTeXInfo &Parent):
       PTeXInfo(Parent.MF), Parent(Parent) {}
 
   bool run();

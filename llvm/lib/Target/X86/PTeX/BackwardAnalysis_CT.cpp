@@ -1,4 +1,4 @@
-#include "PTeX/BackwardAnalysis.h"
+#include "PTeX/BackwardAnalysis_CT.h"
 
 #include "X86.h"
 #include "X86InstrInfo.h"
@@ -12,9 +12,9 @@
 #define PTEX_DEBUG(...) LLVM_DEBUG(dbgs() << DEBUG_TYPE << ": "; __VA_ARGS__);
 
 using namespace llvm;
-using llvm::X86::BackwardAnalysis;
+using llvm::X86::BackwardAnalysis_CT;
 
-void BackwardAnalysis::init() {
+void BackwardAnalysis_CT::init() {
   const PublicPhysRegs bot(TRI);
   const PublicPhysRegs top = X86::computeTop(MF);
 
@@ -44,7 +44,7 @@ void BackwardAnalysis::init() {
           PubOps.insert(&MO);
 }
 
-bool BackwardAnalysis::block(MachineBasicBlock &MBB) {
+bool BackwardAnalysis_CT::block(MachineBasicBlock &MBB) {
   bool Changed = false;
 
   // Meet block pub-out with successor block pub-ins.
@@ -64,7 +64,7 @@ bool BackwardAnalysis::block(MachineBasicBlock &MBB) {
   return Changed;
 }
 
-bool BackwardAnalysis::backpropSafeForInst_sSNI(const MachineInstr &MI, const PublicPhysRegs &PubRegs_) const {
+bool BackwardAnalysis_CT::backpropSafeForInst_sSNI(const MachineInstr &MI, const PublicPhysRegs &PubRegs_) const {
   // Is this a copy instruction?
   if (TII->isFullCopyInstr(MI)) {
     PTEX_DEBUG(dbgs() << __func__ << ": copy: " << MI);
@@ -192,13 +192,10 @@ bool BackwardAnalysis::backpropSafeForInst_sSNI(const MachineInstr &MI, const Pu
   }
 }
 
-bool BackwardAnalysis::backpropSafeForInst(const MachineInstr &MI, const PublicPhysRegs &PubRegs) const {
+bool BackwardAnalysis_CT::backpropSafeForInst(const MachineInstr &MI, const PublicPhysRegs &PubRegs) const {
   switch (X86::getPTeXMode()) {
   case sSNI:
     return backpropSafeForInst_sSNI(MI, PubRegs);
-
-  case SCT:
-    return true;
 
   default:
     report_fatal_error("unhandled analysis type in backpropSafeForInst");
@@ -208,19 +205,11 @@ bool BackwardAnalysis::backpropSafeForInst(const MachineInstr &MI, const PublicP
 // Returns true if any of the instruction data operands are public.
 // TODO: Separation between backpropSafe and dataDefsPublic right now is pointless.
 // Combnie and specialize for each PTeX config.
-bool BackwardAnalysis::dataDefsPublic(const MachineInstr &MI, const PublicPhysRegs &PubRegs) const {
+bool BackwardAnalysis_CT::dataDefsPublic(const MachineInstr &MI, const PublicPhysRegs &PubRegs) const {
   if (!backpropSafeForInst(MI, PubRegs))
     return false;
 
   switch (X86::getPTeXMode()) {
-  case SCT:
-    // Any output can be public.
-    for (const MachineOperand &MO : MI.operands())
-      if (MO.isReg() && MO.isDef() && PubRegs.isPublic(MO.getReg()) &&
-          !(MO.isImplicit() && regAlwaysPublic(MO.getReg(), *TRI)))
-        return true;
-    return false;
-
   case sSNI:
     // All non-flag outputs must already be public.
     {
@@ -240,7 +229,7 @@ bool BackwardAnalysis::dataDefsPublic(const MachineInstr &MI, const PublicPhysRe
   }
 }
 
-bool BackwardAnalysis::instruction(MachineInstr &MI, PublicPhysRegs &PubRegs) {
+bool BackwardAnalysis_CT::instruction(MachineInstr &MI, PublicPhysRegs &PubRegs) {
   bool Changed = false;
 
   // Remove any private defs in PubOps.
@@ -268,7 +257,7 @@ bool BackwardAnalysis::instruction(MachineInstr &MI, PublicPhysRegs &PubRegs) {
 }
 
 
-bool BackwardAnalysis::run() {
+bool BackwardAnalysis_CT::run() {
   init();
 
   bool Changed;
@@ -291,7 +280,7 @@ bool BackwardAnalysis::run() {
   return OverallChanged;
 }
 
-bool BackwardAnalysis::erasePubOp(const MachineOperand *MO) {
+bool BackwardAnalysis_CT::erasePubOp(const MachineOperand *MO) {
   const bool Changed = PubOps.erase(const_cast<MachineOperand *>(MO));
   if (Changed) {
     PTEX_DEBUG(dbgs() << "removed pub op \"" << *MO << "\" of instruction: " << *MO->getParent());

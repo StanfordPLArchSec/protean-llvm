@@ -13,11 +13,12 @@
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "PTeX/PublicPhysRegs.h"
 #include "PTeX/ForwardAnalysis.h"
-#include "PTeX/BackwardAnalysis.h"
 #include "PTeX/Util.h"
 #include "PTeX/BranchAnalysis.h"
 #include "PTeX/StackAnalysis.h"
 #include "PTeX/PTeX.h"
+#include "PTeX/BackwardAnalysis_CT.h"
+#include "PTeX/BackwardAnalysis_CTS.h"
 
 using namespace llvm;
 using llvm::X86::PublicPhysRegs;
@@ -29,20 +30,13 @@ using llvm::X86::PTeXAnalysis;
 static cl::opt<bool> AnalyzeBranches {
   PASS_KEY "-analyze-branches",
   cl::desc("[PTeX] Analyze branches"),
-  cl::init(false),
-  cl::Hidden,
-};
-
-static cl::opt<bool> AnalyzeStack {
-  PASS_KEY "-analyze-stack",
-  cl::desc("[PTeX] Analyze stack"),
-  cl::init(false),
+  cl::init(true),
   cl::Hidden,
 };
 
 static cl::opt<bool> SimpleAnalysis {
   PASS_KEY "-simple",
-  cl::init(true),
+  cl::init(false),
   cl::Hidden,
   cl::desc("[PTeX] Simple analysis: run forward and backward passes individually, and then merge results"),
 };
@@ -98,9 +92,29 @@ void PTeXAnalysis::initAlwaysPublicRegs(MachineInstr &MI) {
 }
 
 void PTeXAnalysis::initFrameSetupAndDestroy(MachineInstr &MI) {
-  if (MI.getFlag(MachineInstr::FrameSetup) ||
-      MI.getFlag(MachineInstr::FrameDestroy))
-    markAllOpsPublic(MI);
+  if (!(MI.getFlag(MachineInstr::FrameSetup) ||
+        MI.getFlag(MachineInstr::FrameDestroy)))
+    return;
+
+  if (getPTeXMode() == NCT) {
+    switch (MI.getOpcode()) {
+    case X86::ADJCALLSTACKUP64:
+    case X86::ADJCALLSTACKDOWN64:
+    case X86::CFI_INSTRUCTION:
+    case X86::MOV64rr:
+    case X86::SUB64ri32:
+    case X86::ADD64ri32:
+      break;
+    case X86::PUSH64r:
+    case X86::POP64r:
+      return;
+    default:
+      llvm::errs() << "unhandled frame setup/destroy opcode: " << MI;
+      std::abort();
+    }
+  }
+  
+  markAllOpsPublic(MI);
 }
 
 void PTeXAnalysis::initPointerCallArgs(MachineInstr &MI) {
@@ -229,7 +243,8 @@ void PTeXAnalysis::init() {
   // Initialize operand types.
   for (MachineBasicBlock &MBB : MF) {
     for (MachineInstr &MI : MBB) {
-      initTransmittedUses(MI);
+      if (getPTeXMode() != NCT)
+        initTransmittedUses(MI);
       initAlwaysPublicRegs(MI);
       initFrameSetupAndDestroy(MI);
       initPointerLoadsOrStores(MI);
@@ -259,21 +274,22 @@ bool PTeXAnalysis::forward() {
   return Changed;
 }
 
-bool PTeXAnalysis::backward() {
-  BackwardAnalysis Backward(*this);
-  bool Changed = false;
-  Changed |= Backward.run();
-  Changed |= merge(Backward);
-  return Changed;
+template <class BackwardAnalysis>
+bool PTeXAnalysis::runBackward() {
+    BackwardAnalysis Backward(*this);
+    bool Changed = false;
+    Changed |= Backward.run();
+    Changed |= merge(Backward);
+    return Changed;
 }
 
-bool PTeXAnalysis::stack() {
-#if 0
-  StackAnalysis Stack(MF, *this);
-  return Stack.run();
-#else
-  return false;
-#endif
+bool PTeXAnalysis::backward() {
+  switch (getPTeXMode()) {
+  case CT: return runBackward<BackwardAnalysis_CT>();
+  case CTS: return runBackward<BackwardAnalysis_CTS>();
+  case NCT: return false;
+  default: report_fatal_error("unhandled ptexm mode for PTeXAnalysis::backward");
+  }
 }
 
 bool PTeXAnalysis::branch() {
@@ -287,6 +303,7 @@ void PTeXAnalysis::run() {
   LLVM_DEBUG(dbgs() << "==== init ====\n");
   LLVM_DEBUG(print(dbgs()));
 
+#if 0
   if (SimpleAnalysis) {
     bool Changed;
 
@@ -310,6 +327,7 @@ void PTeXAnalysis::run() {
     LLVM_DEBUG(print(dbgs()));
     return;
   }
+#endif
 
   bool IterChanged;
   int NumIters = 0;
@@ -320,8 +338,6 @@ void PTeXAnalysis::run() {
     IterChanged |= backward();
     if (AnalyzeBranches)
       IterChanged |= branch();
-    if (AnalyzeStack)
-      IterChanged |= stack();
     IterChanged |= fixup();
 
     LLVM_DEBUG(dbgs() << "==== iter " << NumIters << "====\n");

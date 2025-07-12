@@ -30,7 +30,7 @@ public:
 
   MachineBasicBlock *splitCriticalEdge(MachineBasicBlock *Src, MachineBasicBlock *Dest);
 
-private:
+protected:
   // Initialization functions.
   void init();
   void initTransmittedUses(MachineInstr &MI);
@@ -46,12 +46,14 @@ private:
 
   bool forward();
   bool backward();
-  bool stack();
   bool fixup();
   bool branch();
 
   void markOpPublic(MachineOperand &MO);
   void markAllOpsPublic(MachineInstr &MI);
+
+  template <class BackwardAnalysis>
+  bool runBackward();
 };
 
 }
