@@ -104,13 +104,19 @@ void PTeXAnalysis::initFrameSetupAndDestroy(MachineInstr &MI) {
     case X86::MOV64rr:
     case X86::SUB64ri32:
     case X86::ADD64ri32:
+    case X86::LEA64r:
+    case X86::AND64ri32:
       break;
     case X86::PUSH64r:
     case X86::POP64r:
       return;
     default:
+#if 0
       llvm::errs() << "unhandled frame setup/destroy opcode: " << MI;
       std::abort();
+#else
+      break;
+#endif
     }
   }
   
