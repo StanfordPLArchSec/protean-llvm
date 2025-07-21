@@ -50,7 +50,16 @@ static bool shouldConsiderInstructionForPrefix(const MachineInstr &MI) {
 
 static void annotate(const MachineInstr *MI, MCInst& OutMI) {
   if (MI->getFlag(MachineInstr::AnnotatePointerLoad)) {
-    OutMI.setFlags(X86::IP_USE_DS);
+    OutMI.setFlags(OutMI.getFlags() | X86::IP_USE_DS);
+  }
+
+  if (getPTeXMode() == NCT) {
+    // Mark everything with an output register public.
+    if (llvm::any_of(MI->operands(), [] (const MachineOperand &MO) -> bool {
+      return MO.isReg() && MO.isDef();
+    })) {
+      OutMI.setFlags(OutMI.getFlags() | X86::IP_TPE_PRIVM);
+    }
   }
 }
 
