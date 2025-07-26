@@ -193,7 +193,7 @@ bool BackwardAnalysis_CT::backpropSafeForInst_sSNI(const MachineInstr &MI, const
 }
 
 bool BackwardAnalysis_CT::backpropSafeForInst(const MachineInstr &MI, const PublicPhysRegs &PubRegs) const {
-  switch (X86::getPTeXMode()) {
+  switch (X86::getPTeXMode(*MI.getParent()->getParent())) {
   case sSNI:
     return backpropSafeForInst_sSNI(MI, PubRegs);
 
@@ -209,7 +209,7 @@ bool BackwardAnalysis_CT::dataDefsPublic(const MachineInstr &MI, const PublicPhy
   if (!backpropSafeForInst(MI, PubRegs))
     return false;
 
-  switch (X86::getPTeXMode()) {
+  switch (X86::getPTeXMode(*MI.getParent()->getParent())) {
   case sSNI:
     // All non-flag outputs must already be public.
     {

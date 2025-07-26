@@ -96,7 +96,7 @@ void PTeXAnalysis::initFrameSetupAndDestroy(MachineInstr &MI) {
         MI.getFlag(MachineInstr::FrameDestroy)))
     return;
 
-  if (getPTeXMode() == NCT) {
+  if (getPTeXMode(MI) == NCT) {
     switch (MI.getOpcode()) {
     case X86::ADJCALLSTACKUP64:
     case X86::ADJCALLSTACKDOWN64:
@@ -249,7 +249,7 @@ void PTeXAnalysis::init() {
   // Initialize operand types.
   for (MachineBasicBlock &MBB : MF) {
     for (MachineInstr &MI : MBB) {
-      if (getPTeXMode() != NCT)
+      if (getPTeXMode(MI) != NCT)
         initTransmittedUses(MI);
       initAlwaysPublicRegs(MI);
       initFrameSetupAndDestroy(MI);
@@ -290,7 +290,7 @@ bool PTeXAnalysis::runBackward() {
 }
 
 bool PTeXAnalysis::backward() {
-  switch (getPTeXMode()) {
+  switch (getPTeXMode(MF)) {
   case CT: return runBackward<BackwardAnalysis_CT>();
   case CTS: return runBackward<BackwardAnalysis_CTS>();
   case NCT: return false;

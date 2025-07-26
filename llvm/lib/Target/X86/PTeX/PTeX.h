@@ -9,7 +9,6 @@
 
 namespace llvm::X86 {
 
-bool EnablePTeX();
 extern cl::opt<bool> PrefixProtectedStores;
 extern cl::opt<bool> UnprotectAllPointers;
 extern cl::opt<bool> SplitCriticalEdges;
@@ -22,6 +21,9 @@ enum PTeXMode {
   sSNI = CT,
 };
 
-PTeXMode getPTeXMode();
+PTeXMode getPTeXMode(const MachineFunction &MF);
+PTeXMode getPTeXMode(const MachineInstr &MI);
+bool EnablePTeX(const MachineFunction &MF);
+bool EnablePTeX(const MachineInstr &MI);
 
 }

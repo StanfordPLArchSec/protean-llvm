@@ -42,6 +42,7 @@ static cl::opt<PTeXMode> EnablePTeXOpt {
   cl::desc("Enable PTeX with given mode"),
   cl::init(CT),
   cl::values(
+      clEnumValN(SBOX, "sbox", "Sandbox"),
       clEnumValN(CTS, "cts", "Static constant-time"),
       clEnumValN(CT, "ct", "Constant-time"),
       clEnumValN(NCT, "nct", "Non-constant-time"))};
@@ -134,8 +135,71 @@ static cl::opt<bool> RotateLoopsOpt {
   cl::Hidden,
 };
 
-bool EnablePTeX() {
-  return EnablePTeXOpt.getValue() != SBOX;
+static std::optional<PTeXMode> getPTeXModeFn(const MachineFunction &MF) {
+  const Function &F = MF.getFunction();
+  const Module *M = F.getParent(); // same as F->getModule()
+
+  GlobalVariable *GA = M->getGlobalVariable("llvm.global.annotations");
+  if (!GA || !GA->hasInitializer())
+    return std::nullopt;
+
+  auto *CA = dyn_cast<ConstantArray>(GA->getInitializer());
+  if (!CA)
+    return std::nullopt;
+
+  for (unsigned i = 0; i < CA->getNumOperands(); ++i) {
+    auto *AnnotStruct = dyn_cast<ConstantStruct>(CA->getOperand(i));
+    if (!AnnotStruct || AnnotStruct->getNumOperands() < 2)
+      continue;
+
+    // Operand 0: the annotated thing
+    Value *V = AnnotStruct->getOperand(0)->stripPointerCasts();
+    if (V != &F)
+      continue;
+
+    // Operand 1: the annotation string
+    GlobalVariable *StrGV =
+        dyn_cast<GlobalVariable>(AnnotStruct->getOperand(1)->stripPointerCasts());
+    if (!StrGV || !StrGV->hasInitializer())
+      continue;
+
+    auto *Str = dyn_cast<ConstantDataArray>(StrGV->getInitializer());
+    if (!Str || !Str->isString())
+      continue;
+
+    StringRef Annotation = Str->getAsCString();
+
+    if (!Annotation.consume_front("ptex."))
+      continue;
+
+    const std::map<std::string, PTeXMode> mode_map = {
+      {"sbox", SBOX},
+      {"cts", CTS},
+      {"ct", CT},
+      {"nct", NCT},
+    };
+    return mode_map.at(Annotation.str());
+  }
+
+  return std::nullopt;
+}
+
+PTeXMode getPTeXMode(const MachineFunction &MF) {
+  if (std::optional<PTeXMode> mode = getPTeXModeFn(MF))
+    return *mode;
+  return EnablePTeXOpt.getValue();
+}
+
+PTeXMode getPTeXMode(const MachineInstr &MI) {
+  return getPTeXMode(*MI.getParent()->getParent());
+}
+
+bool EnablePTeX(const MachineFunction &MF) {
+  return getPTeXMode(MF) != SBOX;
+}
+
+bool EnablePTeX(const MachineInstr &MI) {
+  return EnablePTeX(*MI.getParent()->getParent());
 }
 
 static bool DumpPTeX(const MachineFunction &MF) {
@@ -198,7 +262,7 @@ char X86PTeX::ID = 0;
 bool X86PTeX::runOnMachineFunction(MachineFunction& MF) {
   LLVM_DEBUG(dbgs() << "===== " << getPassName() << " on " << MF.getName() << " =====\n");
 
-  if (!X86::EnablePTeX())
+  if (!X86::EnablePTeX(MF))
     return false;
 
   TRI = MF.getSubtarget().getRegisterInfo();

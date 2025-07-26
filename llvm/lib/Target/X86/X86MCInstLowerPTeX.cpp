@@ -26,7 +26,7 @@ static cl::opt<bool> AllowUntyped {
 };
 
 static bool shouldConsiderInstructionForPrefix(const MachineInstr &MI) {
-  if (!EnablePTeX())
+  if (!EnablePTeX(MI))
     return false;
 
   // PTEX-TODO: Need to unify.
@@ -53,7 +53,7 @@ static void annotate(const MachineInstr *MI, MCInst& OutMI) {
     OutMI.setFlags(OutMI.getFlags() | X86::IP_USE_DS);
   }
 
-  if (getPTeXMode() == NCT) {
+  if (getPTeXMode(*MI->getParent()->getParent()) == NCT) {
     // Mark everything with an output register public.
     if (llvm::any_of(MI->operands(), [] (const MachineOperand &MO) -> bool {
       return MO.isReg() && MO.isDef();
@@ -67,7 +67,7 @@ static void annotate(const MachineInstr *MI, MCInst& OutMI) {
 void X86MCInstLowerTPE(const MachineInstr *MI, MCInst& OutMI) {
   annotate(MI, OutMI);
 
-  if (MI->getOpcode() == X86::POP64r && getPTeXMode() == X86::NCT)
+  if (MI->getOpcode() == X86::POP64r && getPTeXMode(*MI->getParent()->getParent()) == X86::NCT)
     for (const MachineOperand &MO : MI->operands())
       if (MO.isReg() && MO.isDef() && !MO.isImplicit() && !MO.isUndef())
         assert(!MO.isPublic());
