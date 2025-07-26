@@ -218,6 +218,7 @@ enum : unsigned {
   GS = 256,
   FS = 257,
   SS = 258,
+  DS = 259,
   PTR32_SPTR = 270,
   PTR32_UPTR = 271,
   PTR64 = 272
