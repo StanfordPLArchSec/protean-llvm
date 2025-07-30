@@ -53,6 +53,7 @@ static void annotate(const MachineInstr *MI, MCInst& OutMI) {
     OutMI.setFlags(OutMI.getFlags() | X86::IP_USE_DS);
   }
 
+#if 0
   if (getPTeXMode(*MI->getParent()->getParent()) == NCT) {
     // Mark everything with an output register public.
     if (llvm::any_of(MI->operands(), [] (const MachineOperand &MO) -> bool {
@@ -61,6 +62,7 @@ static void annotate(const MachineInstr *MI, MCInst& OutMI) {
       OutMI.setFlags(OutMI.getFlags() | X86::IP_TPE_PRIVM);
     }
   }
+#endif
 }
 
 // PTEX-TODO: Rename function.

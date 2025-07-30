@@ -43,6 +43,7 @@ protected:
   void initPublicInstr(MachineInstr &MI);
   void initGOTLoads(MachineInstr &MI);
   void initMachineMemOperands(MachineInstr &MI);
+  void initAnnotatedPublicAccesses(MachineInstr &MI);
 
   bool forward();
   bool backward();

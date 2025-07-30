@@ -239,6 +239,73 @@ void PTeXAnalysis::initGOTLoads(MachineInstr &MI) {
   markAllOpsPublic(MI);
 }
 
+static bool analyzeMemAccess(MachineInstr &MI, Register &Base, Register &Index,
+                             MachineOperand *&Seg,
+                             SmallVectorImpl<MachineOperand *> &DataRegs) {
+  if (!MI.mayLoadOrStore())
+    return false;
+
+  const int MemIdx = X86::getMemRefBeginIdx(MI);
+  if (MemIdx < 0)
+    return false;
+
+  for (MachineOperand &MO : MI.operands()) {
+    if (MO.isReg() && MO.isUse()) {
+      switch (MO.getOperandNo() - MemIdx) {
+      case X86::AddrBaseReg:
+        Base = MO.getReg();
+        break;
+      case X86::AddrIndexReg:
+        Index = MO.getReg();
+        break;
+      case X86::AddrSegmentReg:
+        Seg = &MO;
+        break;
+      default:
+        DataRegs.push_back(&MO);
+        break;
+      }
+    }
+  }
+
+  return true;
+}
+
+void PTeXAnalysis::initAnnotatedPublicAccesses(MachineInstr &MI) {
+  Register Base;
+  Register Index;
+  MachineOperand *Seg = nullptr;
+  SmallVector<MachineOperand *> DataRegs;
+  if (!analyzeMemAccess(MI, Base, Index, Seg, DataRegs))
+    return;
+
+  if (Seg->getReg() != X86::DS)
+    return;
+
+  Seg->setReg(X86::NoRegister);
+
+  switch (getPTeXMode(MI)) {
+  case CTS:
+    // Mark all inputs and outputs public.
+    markAllOpsPublic(MI);
+    break;
+
+  case CT:
+  case NCT:
+    // Mark the output of pure loads public.
+    if (MI.mayLoad() && !MI.mayStore() && DataRegs.empty())
+      for (MachineOperand &MO : MI.operands())
+        if (MO.isReg() && MO.isDef())
+          markOpPublic(MO);
+    // Mark the data input of pure stores public.
+    if (MI.mayStore() && !MI.mayLoad() && DataRegs.size() == 1)
+      markOpPublic(*DataRegs[0]);
+    break;
+
+  default: report_fatal_error("unreachable");
+  }
+}
+
 void PTeXAnalysis::init() {
   // Init pub-in and pub-out maps.
   for (MachineBasicBlock &MBB : MF) {
@@ -249,17 +316,19 @@ void PTeXAnalysis::init() {
   // Initialize operand types.
   for (MachineBasicBlock &MBB : MF) {
     for (MachineInstr &MI : MBB) {
-      if (getPTeXMode(MI) != NCT)
+      if (getPTeXMode(MI) != NCT) {
         initTransmittedUses(MI);
-      initAlwaysPublicRegs(MI);
-      initFrameSetupAndDestroy(MI);
-      initPointerLoadsOrStores(MI);
-      initPointerCallArgs(MI);
-      initPointerTypes(MI);
-      initPointerReturnValue(MI);
-      initPublicInstr(MI);
+        initAlwaysPublicRegs(MI);
+        initFrameSetupAndDestroy(MI);
+        initPointerLoadsOrStores(MI);
+        initPointerCallArgs(MI);
+        initPointerTypes(MI);
+        initPointerReturnValue(MI);
+        initPublicInstr(MI);
+      }
       initGOTLoads(MI);
       initMachineMemOperands(MI);
+      initAnnotatedPublicAccesses(MI);
     }
   }
 
