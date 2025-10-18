@@ -386,7 +386,7 @@ public:
   }
   iterator_range<phi_iterator> phis();
 
-private:
+public:
   /// Return the underlying instruction list container.
   /// This is deliberately private because we have implemented an adequate set
   /// of functions to modify the list, including BasicBlock::splice(),

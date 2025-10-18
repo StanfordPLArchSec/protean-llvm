@@ -48,6 +48,7 @@
 #include <string>
 #include <system_error>
 #include <vector>
+#include "llvm/IR/IRBuilder.h"
 
 namespace llvm {
 
@@ -86,15 +87,14 @@ namespace {
 class Random {
 public:
   /// C'tor
-  Random(unsigned _seed):Seed(_seed) {}
+  Random(unsigned _seed) {
+    srand(_seed);
+  }
 
   /// Return a random integer, up to a
   /// maximum of 2**19 - 1.
   uint32_t Rand() {
-    uint32_t Val = Seed + 0x000b07a1;
-    Seed = (Val * 0x3c7c0ac1);
-    // Only lowest 19 bits are random-ish.
-    return Seed & 0x7ffff;
+    return rand() & 0x7ffff;
   }
 
   /// Return a random 64 bit integer.
@@ -122,9 +122,6 @@ public:
     assert(Val <= max() && "Random value out of range");
     return Val;
   }
-
-private:
-  unsigned Seed;
 };
 
 /// Generate an empty function with a default argument list.
@@ -160,8 +157,7 @@ public:
       : BB(Block), PT(PT), Ran(R), Context(BB->getContext()) {
     ScalarTypes.assign({Type::getInt1Ty(Context), Type::getInt8Ty(Context),
                         Type::getInt16Ty(Context), Type::getInt32Ty(Context),
-                        Type::getInt64Ty(Context), Type::getFloatTy(Context),
-                        Type::getDoubleTy(Context)});
+                        Type::getInt64Ty(Context)});
 
     for (auto &Arg : AdditionalScalarTypes) {
       Type *Ty = nullptr;
@@ -282,7 +278,7 @@ protected:
 
   /// Pick a random type.
   Type *pickType() {
-    return (getRandom() & 1) ? pickVectorType() : pickScalarType();
+    return pickScalarType();
   }
 
   /// Pick a random pointer type.
@@ -316,7 +312,11 @@ protected:
 
   /// Pick a random scalar type.
   Type *pickScalarType() {
-    return ScalarTypes[getRandom() % ScalarTypes.size()];
+    if (getRandom() & 1) {
+      return PointerType::getUnqual(Context);
+    } else {
+      return ScalarTypes[getRandom() % ScalarTypes.size()];
+    }
   }
 
   /// Basic block to populate
@@ -406,6 +406,39 @@ struct BinModifier: public Modifier {
     }
 
     PT->push_back(BinaryOperator::Create(Op, Val0, Val1, "B", Term));
+  }
+};
+
+struct GEPModifier : public Modifier {
+  GEPModifier(BasicBlock *BB, PieceTable *PT, Random *R)
+      : Modifier(BB, PT, R) {}
+
+  void Act() override {
+    Value *Ptr = getRandomPointerValue();
+    Value *Idx = getRandomValue(Type::getInt64Ty(Context));
+    auto *GEP = GetElementPtrInst::Create(
+        pickType(), Ptr, {Idx}, "GEP", BB->getTerminator());
+    PT->push_back(GEP);
+  }
+        
+};
+
+struct PtrCastModifier : public Modifier {
+  PtrCastModifier(BasicBlock *BB, PieceTable *PT, Random *R)
+      : Modifier(BB, PT, R) {}
+
+  void Act() override {
+    Value *Cast;
+    Type *PtrTy = PointerType::getUnqual(Context);
+    Type *IntTy = Type::getInt64Ty(Context);
+    if (getRandom() % 2) {
+      Value *Val = getRandomValue(PtrTy);
+      Cast = new PtrToIntInst(Val, IntTy, "P2I", BB->getTerminator());
+    } else {
+      Value *Val = getRandomValue(IntTy);
+      Cast = new IntToPtrInst(Val, PtrTy, "I2P", BB->getTerminator());
+    }
+    PT->push_back(Cast);
   }
 };
 
@@ -682,27 +715,62 @@ static void FillFunction(Function *F, Random &R) {
   // List of modifiers which add new random instructions.
   std::vector<std::unique_ptr<Modifier>> Modifiers;
   Modifiers.emplace_back(new LoadModifier(BB, &PT, &R));
+  Modifiers.emplace_back(new LoadModifier(BB, &PT, &R));
+  Modifiers.emplace_back(new LoadModifier(BB, &PT, &R));
   Modifiers.emplace_back(new StoreModifier(BB, &PT, &R));
   auto SM = Modifiers.back().get();
-  Modifiers.emplace_back(new ExtractElementModifier(BB, &PT, &R));
-  Modifiers.emplace_back(new ShuffModifier(BB, &PT, &R));
-  Modifiers.emplace_back(new InsertElementModifier(BB, &PT, &R));
+  // Modifiers.emplace_back(new ExtractElementModifier(BB, &PT, &R));
+  // Modifiers.emplace_back(new ShuffModifier(BB, &PT, &R));
+  // Modifiers.emplace_back(new InsertElementModifier(BB, &PT, &R));
   Modifiers.emplace_back(new BinModifier(BB, &PT, &R));
   Modifiers.emplace_back(new CastModifier(BB, &PT, &R));
-  Modifiers.emplace_back(new SelectModifier(BB, &PT, &R));
   Modifiers.emplace_back(new CmpModifier(BB, &PT, &R));
+  Modifiers.emplace_back(new SelectModifier(BB, &PT, &R));
+  Modifiers.emplace_back(new GEPModifier(BB, &PT, &R));
+  Modifiers.emplace_back(new PtrCastModifier(BB, &PT, &R));
 
   // Generate the random instructions
+#if 0
   AllocaModifier{BB, &PT, &R}.ActN(5); // Throw in a few allocas
   ConstModifier{BB, &PT, &R}.ActN(40); // Throw in a few constants
+#endif
 
-  for (unsigned i = 0; i < SizeCL / Modifiers.size(); ++i)
-    for (auto &Mod : Modifiers)
-      Mod->Act();
+  for (unsigned i = 0; i < SizeCL; ++i) {
+    const int x = R.Rand() % Modifiers.size();
+    Modifiers[x]->Act();
+  }
 
   SM->ActN(5); // Throw in a few stores.
 }
 
+#if 1
+static void IntroduceControlFlow(Function *F, Random &R) {
+  std::vector<Instruction *> BoolInsts;
+  for (auto &Instr : F->front()) {
+    if (Instr.getType() == IntegerType::getInt1Ty(F->getContext()))
+      BoolInsts.push_back(&Instr);
+  }
+
+  // Create return block.
+  auto *EntryB = &F->getEntryBlock();
+  assert(isa<ReturnInst>(EntryB->getTerminator()));
+  BasicBlock *RetB = F->getEntryBlock().splitBasicBlock(EntryB->getTerminator()->getIterator());
+
+  // Split basic block at each CMP and add condbr to return block.
+  for (auto *BoolInst : BoolInsts) {
+    BasicBlock *Curr = BoolInst->getParent();
+    BasicBlock::iterator Loc = BoolInst->getIterator();
+    BasicBlock *Next = Curr->splitBasicBlock(std::next(Loc), "CF");
+    Curr->getTerminator()->eraseFromParent();
+    IRBuilder<> IRB(Curr);
+    std::vector<BasicBlock *> Succs = {Next, RetB};
+    llvm::shuffle(Succs.begin(), Succs.end(), R);
+    IRB.CreateCondBr(BoolInst, Succs[0], Succs[1]);
+  }
+
+  // errs() << *F << "\n";
+}
+#else
 static void IntroduceControlFlow(Function *F, Random &R) {
   std::vector<Instruction*> BoolInst;
   for (auto &Instr : F->front()) {
@@ -723,6 +791,7 @@ static void IntroduceControlFlow(Function *F, Random &R) {
     }
   }
 }
+#endif
 
 } // end namespace llvm
 

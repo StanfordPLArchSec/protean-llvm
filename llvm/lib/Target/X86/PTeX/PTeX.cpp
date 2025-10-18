@@ -135,7 +135,39 @@ static cl::opt<bool> RotateLoopsOpt {
   cl::Hidden,
 };
 
+static cl::list<std::string> FuncOverrides {
+  PASS_KEY "-func",
+  cl::desc("key=value,key=value list"),
+  cl::value_desc("KV list"),
+};
+
+static PTeXMode ptexStrToMode(StringRef s) {
+  const std::map<std::string, PTeXMode> mode_map = {
+    {"sbox", SBOX},
+    {"cts", CTS},
+    {"ct", CT},
+    {"nct", NCT},
+  };
+  return mode_map.at(s.str());
+}
+
+static std::optional<PTeXMode> getPTeXModeFnOverride(const MachineFunction &MF) {
+  const StringRef name = MF.getName();
+  for (const std::string &kv_ : FuncOverrides) {
+    StringRef kv(kv_);
+    if (!kv.consume_front(name))
+      continue;
+    if (!kv.consume_front("="))
+      continue;
+    return ptexStrToMode(kv);
+  }
+  return std::nullopt;
+}
+
 static std::optional<PTeXMode> getPTeXModeFn(const MachineFunction &MF) {
+  if (const auto override_mode = getPTeXModeFnOverride(MF))
+    return override_mode;
+
   const Function &F = MF.getFunction();
   const Module *M = F.getParent(); // same as F->getModule()
 
@@ -172,13 +204,7 @@ static std::optional<PTeXMode> getPTeXModeFn(const MachineFunction &MF) {
     if (!Annotation.consume_front("ptex."))
       continue;
 
-    const std::map<std::string, PTeXMode> mode_map = {
-      {"sbox", SBOX},
-      {"cts", CTS},
-      {"ct", CT},
-      {"nct", NCT},
-    };
-    return mode_map.at(Annotation.str());
+    return ptexStrToMode(Annotation);
   }
 
   return std::nullopt;
@@ -200,6 +226,10 @@ bool EnablePTeX(const MachineFunction &MF) {
 
 bool EnablePTeX(const MachineInstr &MI) {
   return EnablePTeX(*MI.getParent()->getParent());
+}
+
+bool EnablePTeX() {
+  return EnablePTeXOpt.getValue() != SBOX;
 }
 
 static bool DumpPTeX(const MachineFunction &MF) {
