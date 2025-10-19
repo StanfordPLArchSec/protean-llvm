@@ -47,6 +47,11 @@ static cl::opt<PTeXMode> EnablePTeXOpt {
       clEnumValN(CT, "ct", "Constant-time"),
       clEnumValN(NCT, "nct", "Non-constant-time"))};
 
+static cl::alias ProteanOpt {
+  "protean",
+  cl::aliasopt(EnablePTeXOpt),
+};
+
 PTeXMode getPTeXMode() {
   return EnablePTeXOpt.getValue();
 }
