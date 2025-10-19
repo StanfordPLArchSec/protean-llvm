@@ -42,7 +42,7 @@ static cl::opt<PTeXMode> EnablePTeXOpt {
   cl::desc("Enable PTeX with given mode"),
   cl::init(CT),
   cl::values(
-      clEnumValN(SBOX, "sbox", "Sandbox"),
+      clEnumValN(SBOX, "sbox", "Non-secret-accessing"), // TODO: Change to arch.
       clEnumValN(CTS, "cts", "Static constant-time"),
       clEnumValN(CT, "ct", "Constant-time"),
       clEnumValN(NCT, "nct", "Non-constant-time"))};
@@ -144,6 +144,11 @@ static cl::list<std::string> FuncOverrides {
   PASS_KEY "-func",
   cl::desc("key=value,key=value list"),
   cl::value_desc("KV list"),
+};
+
+static cl::alias FuncOverridesProtean {
+  "protean-func",
+  cl::aliasopt(FuncOverrides),
 };
 
 static PTeXMode ptexStrToMode(StringRef s) {
