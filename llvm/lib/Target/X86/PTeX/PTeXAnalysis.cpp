@@ -318,14 +318,14 @@ void PTeXAnalysis::init() {
     for (MachineInstr &MI : MBB) {
       if (getPTeXMode(MI) != NCT) {
         initTransmittedUses(MI);
-        initAlwaysPublicRegs(MI);
-        initFrameSetupAndDestroy(MI);
         initPointerLoadsOrStores(MI);
         initPointerCallArgs(MI);
         initPointerTypes(MI);
         initPointerReturnValue(MI);
         initPublicInstr(MI);
       }
+      initAlwaysPublicRegs(MI);
+      initFrameSetupAndDestroy(MI);
       initGOTLoads(MI);
       initMachineMemOperands(MI);
       initAnnotatedPublicAccesses(MI);
