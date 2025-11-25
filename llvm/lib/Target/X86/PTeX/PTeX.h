@@ -18,6 +18,7 @@ enum PTeXMode {
   CT,
   CTS,
   NCT,
+  RAND,
   sSNI = CT,
 };
 

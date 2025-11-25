@@ -12,6 +12,7 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/Support/RandomNumberGenerator.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/Pass.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
@@ -45,7 +46,8 @@ static cl::opt<PTeXMode> EnablePTeXOpt {
       clEnumValN(SBOX, "sbox", "Non-secret-accessing"), // TODO: Change to arch.
       clEnumValN(CTS, "cts", "Static constant-time"),
       clEnumValN(CT, "ct", "Constant-time"),
-      clEnumValN(NCT, "nct", "Non-constant-time"))};
+      clEnumValN(NCT, "nct", "Non-constant-time"),
+      clEnumValN(RAND, "rand", "Randomly prot-prefixed"))};
 
 static cl::alias ProteanOpt {
   "protean",
@@ -157,6 +159,7 @@ static PTeXMode ptexStrToMode(StringRef s) {
     {"cts", CTS},
     {"ct", CT},
     {"nct", NCT},
+    {"rand", RAND},
   };
   return mode_map.at(s.str());
 }
@@ -266,6 +269,8 @@ public:
 
   bool runOnMachineFunction(MachineFunction& MF) override;
 
+  bool doInitialization(Module &M) override;
+
 private:
   const bool Instrument;
   const TargetRegisterInfo *TRI = nullptr;
@@ -293,6 +298,9 @@ private:
   void splitCriticalEdges(MachineFunction &MF);
 
   X86::PTeXAnalysis *makePTA(MachineFunction &MF);
+  void randomlyProtPrefix(MachineFunction &MF);
+
+  std::unique_ptr<RandomNumberGenerator> RNG;
 };
 
 }
@@ -304,6 +312,11 @@ bool X86PTeX::runOnMachineFunction(MachineFunction& MF) {
 
   if (!X86::EnablePTeX(MF))
     return false;
+
+  if (X86::getPTeXMode(MF) == X86::RAND) {
+    randomlyProtPrefix(MF);
+    return true;
+  }
 
   TRI = MF.getSubtarget().getRegisterInfo();
 
@@ -1059,6 +1072,33 @@ void X86PTeX::splitCriticalEdges(MachineFunction &MF) {
   for (const auto &[Src, Dst] : CriticalEdges) {
     if (!Src->SplitCriticalEdge(Dst, *this)) {
       LLVM_DEBUG(dbgs() << "ptex-split: failed to split critical edge\n");
+    }
+  }
+}
+
+bool X86PTeX::doInitialization(Module &M) {
+  bool Changed = MachineFunctionPass::doInitialization(M);
+  if (X86::getPTeXMode() == X86::RAND) {
+    RNG = M.createRNG("X86PTeX-RAND");
+    Changed = true;
+  }
+  return Changed;
+}
+
+void X86PTeX::randomlyProtPrefix(MachineFunction &MF) {
+  // Randomly select the frequency of PROT prefixes.
+  auto get = [&] () { return (*RNG)(); };
+  const auto thresh = get();
+  for (MachineBasicBlock &MBB : MF) {
+    for (MachineInstr &MI : MBB) {
+      if (get() < thresh) {
+        // Mark all outputs as unprotected.
+        for (MachineOperand &MO : MI.operands()) {
+          if (MO.isReg()) {
+            MO.setIsPublic();
+          }
+        }
+      }
     }
   }
 }
