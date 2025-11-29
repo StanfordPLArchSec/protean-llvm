@@ -20,6 +20,8 @@ enum PTeXMode {
   NCT,
   RAND,
   sSNI = CT,
+  ARCH = SBOX,
+  UNR = NCT,
 };
 
 PTeXMode getPTeXMode(const MachineFunction &MF);

@@ -41,12 +41,14 @@ namespace llvm::X86 {
 static cl::opt<PTeXMode> EnablePTeXOpt {
   PASS_KEY,
   cl::desc("Enable PTeX with given mode"),
-  cl::init(CT),
+  cl::init(SBOX),
   cl::values(
-      clEnumValN(SBOX, "sbox", "Non-secret-accessing"), // TODO: Change to arch.
+      clEnumValN(ARCH, "sbox", "Alias for 'arch'"),
+      clEnumValN(ARCH, "arch", "Sandbox"),
       clEnumValN(CTS, "cts", "Static constant-time"),
       clEnumValN(CT, "ct", "Constant-time"),
-      clEnumValN(NCT, "nct", "Non-constant-time"),
+      clEnumValN(UNR, "nct", "Alias for 'unr'"),
+      clEnumValN(UNR, "unr", "Unrestricted"),
       clEnumValN(RAND, "rand", "Randomly prot-prefixed"))};
 
 static cl::alias ProteanOpt {
